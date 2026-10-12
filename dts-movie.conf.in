@@ -1,0 +1,79 @@
+# DTS:X Ultra "Movie" preset for Acer Predator PHN16-71 internal speakers (SUBSYS 1025170F)
+# Template: install.sh fills @HOME@ and @SPEAKER@
+#   FRONT : measured Windows Movie 2x2 matrix (HPF+AEQ+I3DA/CTC+DE linear), IRs in ~/.config/pipewire/dts-ir
+#           48 kHz IRs; PipeWire resamples them at other graph rates
+#   MBHL  : empirical Windows-fitted loudness AGC (dts_agc.so)
+#   BASS  : empirical TBHDX harmonics (dts_bass.so, fitted to Windows)
+#   VOLUME: sink volume after the AGC, Windows taper s^1.7 (dts_vol.so)
+#   Missing: adaptive DE, LC
+#
+# Install: copy to ~/.config/pipewire/pipewire.conf.d/ and run
+#   systemctl --user restart pipewire
+# then pick "DTS Movie (speakers)" as the output device.
+# Requires PipeWire >= 0.3.70 (bq_raw coefficient lists) and swh-plugins (LADSPA).
+
+context.modules = [
+{   name = libpipewire-module-filter-chain
+    args = {
+        node.description = "DTS Movie (speakers)"
+        media.name       = "DTS Movie (speakers)"
+        filter.graph = {
+            nodes = [
+            { type = builtin name = in_L label = copy }
+            { type = builtin name = in_R label = copy }
+            { type = builtin name = conv_LL label = convolver config = { filename = "@HOME@/.config/pipewire/dts-ir/movie_LL.wav" } }
+            { type = builtin name = conv_LR label = convolver config = { filename = "@HOME@/.config/pipewire/dts-ir/movie_LR.wav" } }
+            { type = builtin name = mix_L label = mixer }
+            { type = builtin name = conv_RL label = convolver config = { filename = "@HOME@/.config/pipewire/dts-ir/movie_RL.wav" } }
+            { type = builtin name = conv_RR label = convolver config = { filename = "@HOME@/.config/pipewire/dts-ir/movie_RR.wav" } }
+            { type = builtin name = mix_R label = mixer }
+            { type = ladspa name = bass_L plugin = "@HOME@/.ladspa/dts_bass.so" label = dts_bass
+              control = { "Amount" = 1 "Split (Hz)" = 60 "Band top (Hz)" = 500 "Post low-pass (Hz)" = 800 "Release (s)" = 0.08 "Low c2" = 0.0410612 "Low c3" = 0.0690857 "Low c4" = 0.0604501 "Low c5" = 0.0218491 "Low c6" = 0.0168782 "High c2" = 0.126772 "High c3" = 0.033567 "High c4" = 0.0211428 "High c5" = 0.00135132 "High c6" = 0.00459956 } }
+            { type = ladspa name = bass_R plugin = "@HOME@/.ladspa/dts_bass.so" label = dts_bass
+              control = { "Amount" = 1 "Split (Hz)" = 60 "Band top (Hz)" = 500 "Post low-pass (Hz)" = 800 "Release (s)" = 0.08 "Low c2" = 0.0410612 "Low c3" = 0.0690857 "Low c4" = 0.0604501 "Low c5" = 0.0218491 "Low c6" = 0.0168782 "High c2" = 0.126772 "High c3" = 0.033567 "High c4" = 0.0211428 "High c5" = 0.00135132 "High c6" = 0.00459956 } }
+            { type = ladspa name = agc plugin = "@HOME@/.ladspa/dts_agc.so" label = dts_agc
+              control = { "Initial gain (dB)" = 23 "Max gain (dB)" = 33.9563 "Target output RMS (dB)" = -12.4092 "Rise rate k0 (1/s)" = 0.347365 "Rise slope (1/dB)" = 0.152984 "Rise ref level (dB)" = -55.6 "Detector rise tau (s)" = 0.804926 "Detector fall tau (s)" = 0.0154266 "Gate level (dB)" = -63.4057 "Fall rate (1/s)" = 19.2328 "Ceiling (lin)" = 0.987 "Bass weight (dB)" = 4.12443 "Bass split (Hz)" = 500 "Max rise (dB/s)" = 39.0164 } }
+            { type = ladspa name = vol_L plugin = "@HOME@/.ladspa/dts_vol.so" label = dts_vol
+              control = { "Volume" = 1.0 "Exponent" = 1.7 } }
+            { type = ladspa name = vol_R plugin = "@HOME@/.ladspa/dts_vol.so" label = dts_vol
+              control = { "Volume" = 1.0 "Exponent" = 1.7 } }
+            ]
+            links = [
+            { output = "in_L:Out" input = "conv_LL:In" }
+            { output = "in_R:Out" input = "conv_LR:In" }
+            { output = "conv_LL:Out" input = "mix_L:In 1" }
+            { output = "conv_LR:Out" input = "mix_L:In 2" }
+            { output = "in_L:Out" input = "conv_RL:In" }
+            { output = "in_R:Out" input = "conv_RR:In" }
+            { output = "conv_RL:Out" input = "mix_R:In 1" }
+            { output = "conv_RR:Out" input = "mix_R:In 2" }
+            { output = "bass_L:Out" input = "in_L:In" }
+            { output = "bass_R:Out" input = "in_R:In" }
+            { output = "mix_L:Out" input = "agc:In L" }
+            { output = "mix_R:Out" input = "agc:In R" }
+            { output = "agc:Out L" input = "vol_L:In" }
+            { output = "agc:Out R" input = "vol_R:In" }
+            ]
+            inputs  = [ "bass_L:In" "bass_R:In" ]
+            outputs = [ "vol_L:Out" "vol_R:Out" ]
+            capture.volumes = [
+                { control = "vol_L:Volume" min = 0.0 max = 1.0 scale = cubic }
+                { control = "vol_R:Volume" min = 0.0 max = 1.0 scale = cubic }
+            ]
+        }
+        audio.channels = 2
+        audio.position = [ FL FR ]
+        capture.props = {
+            node.name   = "effect_input.dts_movie"
+            media.class = Audio/Sink
+        }
+        playback.props = {
+            node.name   = "effect_output.dts_movie"
+            node.passive = true
+            # Pin to the laptop speakers so the chain never feeds itself. Find the name with:
+            #   pw-cli ls Node | grep -A3 alsa_output
+            target.object = "@SPEAKER@"
+        }
+    }
+}
+]
